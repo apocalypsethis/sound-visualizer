@@ -1,0 +1,1199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<link rel="icon" href="data:," />
+<title>声音可视化工具 · 让音调、响度、音色看得见</title>
+<style>
+  :root{
+    --bg:#0a0f1e; --bg2:#0e1528;
+    --panel:#141c33; --panel2:#1a2442; --line:#26335e;
+    --text:#f1f5f9; --muted:#9aa8c7; --muted2:#6b7aa0;
+    --cyan:#22d3ee; --cyan-dim:#0e7490;
+    --amber:#fbbf24; --pink:#f472b6; --green:#34d399; --red:#f87171;
+    --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer}
+  .wrap{max-width:1080px;margin:0 auto;padding:18px 16px 40px}
+
+  /* Header */
+  .top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  h1{font-size:clamp(24px,6.4vw,38px);line-height:1.2;margin:0;letter-spacing:.01em;overflow-wrap:break-word}
+  h1 .hl{color:var(--cyan)}
+  .sub{color:var(--muted);font-size:clamp(14px,2.6vw,17px);margin:6px 0 0}
+  .status{display:inline-flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:700;white-space:nowrap;margin-top:6px}
+  .dot{width:10px;height:10px;border-radius:50%;background:#475569;flex:none}
+  .dot.live{background:var(--green);box-shadow:0 0 0 5px rgba(52,211,153,.18);animation:pulse 1.4s infinite}
+  .dot.sim{background:var(--amber);box-shadow:0 0 0 5px rgba(251,191,36,.16)}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+  @media (prefers-reduced-motion: reduce){.dot.live{animation:none}}
+
+  /* Source controls */
+  .source-bar{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  @media(max-width:560px){.source-bar{grid-template-columns:1fr}}
+  .src-btn{border:2px solid var(--line);background:var(--panel);color:var(--text);border-radius:var(--radius);padding:16px;display:flex;align-items:center;gap:14px;text-align:left;transition:border-color .15s, background .15s;width:100%}
+  .src-btn .ico{font-size:32px;line-height:1;flex:none}
+  .src-btn b{font-size:19px;display:block}
+  .src-btn span{font-size:13.5px;color:var(--muted);display:block;margin-top:2px}
+  .src-btn.active-mic{border-color:var(--green);background:#12291f}
+  .src-btn.active-sim{border-color:var(--amber);background:#2a2110}
+  .src-btn.attention{border-color:var(--amber);box-shadow:0 0 0 4px rgba(251,191,36,.25)}
+  .src-btn:active{transform:scale(.99)}
+
+  .alert{display:none;background:#3b1520;border:1.5px solid #7f1d2e;color:#fecdd3;border-radius:14px;padding:13px 16px;font-size:15px;margin-bottom:14px;line-height:1.6}
+  .alert.show{display:block}
+  .alert b{color:#fff}
+
+  /* Self-check */
+  .selfcheck{border-color:#2c4a7c}
+  .sc-verdict{font-size:19px;font-weight:800;line-height:1.55;border-radius:12px;padding:13px 16px;margin-bottom:12px;background:var(--panel2);border:1.5px solid var(--line)}
+  .sc-verdict.ok{background:#123524;color:#bbf7d0;border-color:#166534}
+  .sc-verdict.warn{background:#3d2a08;color:#fde68a;border-color:#92600a}
+  .sc-verdict.bad{background:#3b1520;color:#fecdd3;border-color:#7f1d2e}
+  .sc-list{list-style:none;margin:0 0 4px;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media(max-width:640px){.sc-list{grid-template-columns:1fr}}
+  .sc-list li{display:flex;gap:10px;align-items:flex-start;background:var(--panel2);border-radius:12px;padding:10px 13px}
+  .sc-ico{font-size:19px;line-height:1.35;flex:none}
+  .sc-list b{font-size:15.5px;display:block}
+  .sc-list small{font-size:13px;color:var(--muted);display:block;line-height:1.5;margin-top:1px}
+  .sc-steps{background:#241a06;border:1.5px solid #92600a;border-radius:12px;padding:13px 16px;margin-top:10px;font-size:15px;line-height:1.65}
+  .sc-steps[hidden]{display:none}
+  .sc-steps ol{margin:8px 0 2px;padding-left:22px}
+  .sc-steps li{margin:6px 0}
+  .sc-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .sc-sim-btn{background:var(--amber);color:#2a1a00;border:none;font-size:16.5px;font-weight:800;border-radius:999px;padding:12px 22px}
+  .sc-sim-btn:active{transform:scale(.97)}
+  .sc-recheck{background:transparent;color:var(--muted);border:1.5px solid var(--line);font-size:15px;font-weight:700;border-radius:999px;padding:11px 18px}
+
+  /* Cards */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .card-head h2{font-size:19px;margin:0;display:flex;align-items:center;gap:8px}
+  .hint{font-size:13px;color:var(--muted)}
+
+  canvas{display:block;width:100%;background:#070b16;border-radius:12px}
+  #waveCanvas{height:230px}
+  #specCanvas{height:190px}
+  @media(max-width:560px){#waveCanvas{height:180px}#specCanvas{height:160px}}
+
+  .anno{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  @media(max-width:640px){.anno{grid-template-columns:1fr}}
+  .anno div{background:var(--panel2);border-radius:12px;padding:10px 13px;font-size:14.5px;line-height:1.55}
+  .anno b{color:var(--cyan)}
+  .anno div:nth-child(2) b{color:var(--amber)}
+  .anno div:nth-child(3) b{color:var(--pink)}
+
+  .freeze-btn{background:var(--cyan);color:#06202a;border:none;font-size:17px;font-weight:800;border-radius:999px;padding:12px 22px;box-shadow:0 6px 20px rgba(34,211,238,.3)}
+  .freeze-btn:active{transform:scale(.97)}
+  .freeze-btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+  .stop-btn{background:transparent;color:var(--red);border:1.5px solid #7f1d2e;font-size:15px;font-weight:700;border-radius:999px;padding:10px 18px}
+  .stop-btn[hidden]{display:none}
+
+  /* Metrics */
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+  @media(max-width:760px){.metrics{grid-template-columns:1fr}}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-height:158px}
+  .metric .label{font-size:15px;font-weight:800;letter-spacing:.02em;display:flex;align-items:center;gap:7px}
+  .metric .big{font-size:44px;font-weight:800;line-height:1.1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+  .metric .big small{font-size:18px;color:var(--muted);font-weight:600}
+  .metric .desc{font-size:14px;color:var(--muted);line-height:1.55}
+  .note-badge{display:inline-block;background:#2b1440;color:#f0abfc;border:1px solid #6b21a8;font-weight:800;font-size:17px;border-radius:10px;padding:3px 12px;margin-top:4px}
+  .grade-badge{display:inline-block;font-weight:800;font-size:16px;border-radius:10px;padding:4px 13px;margin-top:6px;background:#1e293b;color:#cbd5e1;border:1px solid var(--line)}
+  .grade-badge.talk{background:#123524;color:#86efac;border-color:#166534}
+  .grade-badge.loud{background:#3d1a10;color:#fdba74;border-color:#9a3412}
+  .level-track{height:16px;background:#0a0f1e;border-radius:999px;overflow:hidden;margin:12px 0 6px;border:1px solid var(--line)}
+  .level-fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#34d399,#fbbf24 65%,#f87171);transition:width .08s linear}
+  .pitch-track{position:relative;height:16px;background:#0a0f1e;border-radius:999px;margin:12px 0 6px;border:1px solid var(--line);overflow:visible}
+  .pitch-marker{position:absolute;top:50%;width:18px;height:18px;border-radius:50%;background:var(--pink);border:3px solid #fff;transform:translate(-50%,-50%);left:0%;transition:left .12s;box-shadow:0 2px 10px rgba(244,114,182,.5)}
+  .scale-labels{display:flex;justify-content:space-between;font-size:12px;color:var(--muted2)}
+  .timbre-word{font-size:30px;font-weight:800;margin:8px 0 2px}
+
+  /* Compare */
+  .compare-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .empty{border:1.5px dashed var(--line);border-radius:14px;padding:26px 18px;text-align:center;color:var(--muted);font-size:15px;line-height:1.7}
+  .snap{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px}
+  .snap-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .snap select{background:#0a0f1e;color:var(--text);border:1px solid var(--line);border-radius:9px;font-size:15px;font-weight:700;padding:6px 8px;font-family:inherit;max-width:65%}
+  .snap .del{background:none;border:none;color:var(--muted);font-size:20px;line-height:1;padding:4px 8px}
+  .snap .del:hover{color:var(--red)}
+  .snap canvas{height:74px;margin-bottom:8px}
+  .snap canvas.spec-mini{height:56px}
+  .snap .vals{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;font-variant-numeric:tabular-nums}
+  .snap .vals b{color:#fff}
+  .snap .time{font-size:12px;color:var(--muted2);margin-top:5px}
+
+  /* Simulator */
+  #simPanel{border-color:#3a2f10}
+  #simPanel.attention{border-color:var(--amber);box-shadow:0 0 0 4px rgba(251,191,36,.22)}
+  .wave-types{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:6px 0 16px}
+  @media(max-width:560px){.wave-types{grid-template-columns:repeat(2,1fr)}}
+  .wt{background:var(--panel2);border:2px solid var(--line);color:var(--text);border-radius:14px;padding:12px 8px;font-size:16px;font-weight:800}
+  .wt svg{display:block;margin:0 auto 6px}
+  .wt small{display:block;font-weight:500;color:var(--muted);font-size:12.5px;margin-top:2px}
+  .wt.sel{border-color:var(--amber);background:#2a2110}
+  .slider-row{margin:14px 0}
+  .slider-row label{display:flex;justify-content:space-between;font-size:16px;font-weight:700;margin-bottom:6px}
+  .slider-row label output{color:var(--amber);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;height:36px;accent-color:var(--amber);cursor:pointer}
+  .play-btn{background:var(--amber);color:#2a1a00;border:none;font-size:19px;font-weight:800;border-radius:999px;padding:14px 34px;width:100%;margin-top:8px}
+  .play-btn.playing{background:var(--red);color:#fff}
+  .play-btn:active{transform:scale(.98)}
+
+  /* Dynamics (渐强渐弱) practice */
+  #dynPanel{border-color:#274b3a}
+  .dyn-targets{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0 14px}
+  @media(max-width:640px){.dyn-targets{grid-template-columns:1fr}}
+  .dyn-tgt{background:var(--panel2);border:2px solid var(--line);color:var(--text);border-radius:14px;padding:12px 10px;text-align:center;width:100%}
+  .dyn-tgt .sym{font-size:46px;font-weight:800;line-height:1.1;color:var(--amber);display:block}
+  .dyn-tgt b{font-size:18px;display:block;margin-top:2px}
+  .dyn-tgt small{display:block;color:var(--muted);font-size:13.5px;margin-top:2px}
+  .dyn-tgt.sel{border-color:var(--green);background:#12291f}
+  .dyn-tgt:active{transform:scale(.99)}
+  #trajCanvas{height:250px}
+  @media(max-width:560px){#trajCanvas{height:200px}}
+  .dyn-controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
+  .dyn-start{background:var(--green);color:#06251a;border:none;font-size:19px;font-weight:800;border-radius:999px;padding:14px 30px}
+  .dyn-start:disabled{opacity:.45;cursor:not-allowed}
+  .dyn-start:active{transform:scale(.97)}
+  .dyn-finish{background:transparent;color:var(--cyan);border:2px solid var(--cyan-dim);font-size:16.5px;font-weight:800;border-radius:999px;padding:12px 22px}
+  .dyn-finish:disabled{opacity:.4;cursor:not-allowed}
+  .dyn-status{font-size:15.5px;font-weight:700;color:var(--muted)}
+  .dyn-status.rec{color:var(--red)}
+  .dyn-feedback{margin-top:12px;background:var(--panel2);border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;font-size:17.5px;line-height:1.65;min-height:60px}
+  .dyn-feedback.good{border-color:#166534;background:#123524}
+  .dyn-srchint{font-size:14.5px;color:var(--amber);margin-top:10px;line-height:1.6}
+  .dyn-srchint[hidden]{display:none}
+  .dyn-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+  @media(max-width:640px){.dyn-steps{grid-template-columns:1fr}}
+  .dyn-steps div{background:var(--panel2);border-radius:12px;padding:11px 13px;font-size:14.5px;line-height:1.6}
+  .dyn-steps b{color:var(--green)}
+
+  /* Experiments */
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:820px){.steps{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:460px){.steps{grid-template-columns:1fr}}
+  .step{background:var(--panel2);border-radius:14px;padding:14px}
+  .step .n{width:28px;height:28px;border-radius:50%;background:var(--cyan);color:#06202a;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:15px;margin-bottom:8px}
+  .step b{font-size:16px;display:block;margin-bottom:4px}
+  .step p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.6}
+
+  .foot{color:var(--muted2);font-size:13px;text-align:center;margin-top:20px;line-height:1.7}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);background:#1e293b;color:#fff;border:1px solid var(--line);font-size:15px;font-weight:700;padding:12px 20px;border-radius:999px;opacity:0;transition:all .25s;z-index:50;max-width:92vw;text-align:center;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <h1>声音可视化工具<br><span class="hl">让音调、响度、音色「看得见」</span></h1>
+      <p class="sub">对着麦克风说话、唱歌、吹口哨、拍手 —— 声音会立刻变成会动的波形。</p>
+    </div>
+    <div class="status" id="statusPill"><span class="dot" id="statusDot"></span><span id="statusText">尚未开启</span></div>
+  </div>
+
+  <!-- Environment self-check -->
+  <section class="card selfcheck" id="selfCheck" aria-label="上课前环境自检">
+    <div class="card-head">
+      <h2>🩺 上课前环境自检</h2>
+      <span class="hint">打开页面自动检测 · 课前先看这一区</span>
+    </div>
+    <div class="sc-verdict" id="scVerdict">正在检测这台电脑…</div>
+    <ul class="sc-list">
+      <li><span class="sc-ico" id="scIcoSecure">…</span><span><b>安全环境</b><small id="scTxtSecure">检测中</small></span></li>
+      <li><span class="sc-ico" id="scIcoGum">…</span><span><b>麦克风接口</b><small id="scTxtGum">检测中</small></span></li>
+      <li><span class="sc-ico" id="scIcoAudio">…</span><span><b>声音分析功能</b><small id="scTxtAudio">检测中</small></span></li>
+      <li><span class="sc-ico" id="scIcoMic">🎙️</span><span><b>麦克风实测</b><small id="scTxtMic">还没开启麦克风 —— 点下面的「开启麦克风」，对着它喊一声确认</small></span></li>
+    </ul>
+    <div class="sc-steps" id="scSteps" hidden>
+      <b>麦克风用不了？按这三步排查：</b>
+      <ol>
+        <li>换 <b>Edge 或 Chrome</b> 打开这个页面，<b>不要</b>在希沃白板软件的内嵌窗口里打开。</li>
+        <li>打开 Windows <b>设置 → 隐私 → 麦克风</b>，确认「允许应用访问麦克风」和浏览器这一项都是开的。</li>
+        <li>确认白板 / 电脑<b>接了麦克风</b>；没有就插一个 <b>USB 麦克风</b>，再点一次「开启麦克风」。</li>
+      </ol>
+      <p style="margin:8px 0 0">📱 <b>手机上打不开：</b>多半是页面开在某个 App 的内置窗口里，它不会弹权限询问框 —— 把链接复制到手机自带浏览器或 Chrome 里打开再试。</p>
+    </div>
+    <div class="sc-actions">
+      <button class="sc-sim-btn" id="scSimBtn" type="button">🔊 直接用发声模拟上课</button>
+      <button class="sc-recheck" id="scRecheck" type="button">↻ 重新检测</button>
+    </div>
+  </section>
+
+  <div class="alert" id="micAlert" role="alert">
+    <b>麦克风没有打开。</b>可能是权限被拒绝了。请点浏览器地址栏旁边的 🎤 / 锁形图标，把麦克风设为「允许」，再点一次「开启麦克风」。<br>
+    没有麦克风也没关系 —— 下面的 <b>「发声模拟」</b> 照样能看波形、比音色！
+  </div>
+
+  <div class="source-bar">
+    <button class="src-btn" id="micBtn" type="button">
+      <span class="ico" aria-hidden="true">🎤</span>
+      <span><b id="micBtnTitle">开启麦克风</b><span>用你自己的声音做实验（说话 / 唱歌 / 口哨 / 拍手）</span></span>
+    </button>
+    <button class="src-btn" id="simJumpBtn" type="button">
+      <span class="ico" aria-hidden="true">🔊</span>
+      <span><b>发声模拟</b><span>没有麦克风时用：电脑发出不同音色的声音</span></span>
+    </button>
+  </div>
+
+  <!-- Waveform -->
+  <section class="card" aria-label="实时波形">
+    <div class="card-head">
+      <h2>〰️ 实时波形</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="stop-btn" id="stopBtn" type="button" hidden>⏹ 停止</button>
+        <button class="freeze-btn" id="freezeBtn" type="button" disabled>📌 定格这一声</button>
+      </div>
+    </div>
+    <canvas id="waveCanvas"></canvas>
+    <div class="anno">
+      <div><b>波形越密 → 音调越高</b><br>试着从低音「啊——」慢慢滑到高音，波形会越挤越密。</div>
+      <div><b>波形越高 → 声音越响</b><br>小声说话波形矮矮的，大喊一声，波形会猛地长高。</div>
+      <div><b>波形形状 → 音色不同</b><br>口哨的波形圆滑，拍手是一下尖峰，形状就是声音的「长相」。</div>
+    </div>
+  </section>
+
+  <!-- Metrics -->
+  <div class="metrics">
+    <div class="metric" aria-label="音调">
+      <div class="label">🎵 音调（声音的高低）</div>
+      <div class="big"><span id="pitchHz">—</span> <small>Hz</small></div>
+      <div><span class="note-badge" id="noteBadge">等待发声</span></div>
+      <div class="pitch-track"><div class="pitch-marker" id="pitchMarker" style="left:0%"></div></div>
+      <div class="scale-labels"><span>低 80Hz</span><span>中 262Hz</span><span>高 1000Hz</span></div>
+    </div>
+    <div class="metric" aria-label="响度">
+      <div class="label">🔊 响度（声音的大小）</div>
+      <div class="big"><span id="dbVal">—</span> <small>dB</small></div>
+      <div class="level-track"><div class="level-fill" id="levelFill"></div></div>
+      <div class="scale-labels"><span>安静</span><span>说话</span><span>大喊</span></div>
+      <div><span class="grade-badge" id="gradeBadge">— 等待发声 —</span></div>
+    </div>
+    <div class="metric" aria-label="音色">
+      <div class="label">🎨 音色（声音的「长相」）</div>
+      <div class="timbre-word" id="timbreWord">—</div>
+      <p class="desc" id="timbreDesc">发出一个声音，这里会形容它的音色，下面的频谱图会画出它的「指纹」。</p>
+    </div>
+  </div>
+
+  <!-- Dynamics practice -->
+  <section class="card" id="dynPanel" aria-label="渐强渐弱练习">
+    <div class="card-head">
+      <h2>⛰️ 渐强渐弱练习 · 《哎呀玛利亚丢了宝石花》</h2>
+      <span class="hint">唱一句歌，看你的歌声在几秒里慢慢变强、变弱</span>
+    </div>
+    <div class="dyn-targets" id="dynTargets">
+      <button class="dyn-tgt sel" type="button" data-tgt="cresc"><span class="sym">＜</span><b>渐强</b><small>声音慢慢变大，像上坡</small></button>
+      <button class="dyn-tgt" type="button" data-tgt="decresc"><span class="sym">＞</span><b>渐弱</b><small>声音慢慢变小，像下坡</small></button>
+      <button class="dyn-tgt" type="button" data-tgt="mountain"><span class="sym">＜＞</span><b>先渐强再渐弱</b><small>先变大、再变小，像一座山</small></button>
+    </div>
+    <canvas id="trajCanvas"></canvas>
+    <p class="hint" style="margin:8px 0 0">黄色虚线是目标形状，青色的是你的歌声走过的「山路」：声音越响，山路爬得越高。跟着虚线唱，让两条线长得像一点！</p>
+    <div class="dyn-controls">
+      <button class="dyn-start" id="dynStartBtn" type="button">▶ 开始唱（6 秒）</button>
+      <button class="dyn-finish" id="dynFinishBtn" type="button" disabled>👀 看看我的形状</button>
+      <span class="dyn-status" id="dynStatus">选好目标，点「开始唱」</span>
+    </div>
+    <div class="dyn-srchint" id="dynSrcHint" hidden></div>
+    <div class="dyn-feedback" id="dynFeedback">先用一个长长的「啊——」来练：跟着目标形状，慢慢把声音变大、或慢慢变小。唱完点「看看我的形状」，这里会告诉你做得怎么样。</div>
+    <div class="dyn-steps">
+      <div><b>第 1 步</b> · 先用「啊——」长音练形状，不用唱词，只练慢慢变大、慢慢变小。</div>
+      <div><b>第 2 步</b> · 再唱《哎呀玛利亚丢了宝石花》里的一句，用刚才练好的形状唱出来。</div>
+      <div><b>第 3 步</b> · 全班一起唱，看大屏幕上全班的歌声是一座什么样的山。</div>
+    </div>
+  </section>
+
+  <!-- Spectrum -->
+  <section class="card" aria-label="频谱图">
+    <div class="card-head">
+      <h2>📊 频谱图 · 音色的「指纹」</h2>
+      <span class="hint">每根柱子是一种频率成分的强弱；圆点标出基频和它的谐波</span>
+    </div>
+    <canvas id="specCanvas"></canvas>
+    <p class="hint" style="margin:10px 0 0">口哨的频谱只有一两根高柱子（成分单一、纯净）；说话和拍手的柱子又多又杂（成分丰富）。对比一下，音色差别一目了然。</p>
+  </section>
+
+  <!-- Compare -->
+  <section class="card" aria-label="定格对比">
+    <div class="card-head">
+      <h2>🗂 定格对比区</h2>
+      <span class="hint">最多存 6 张 · 点卡片上的标签可改名，方便对比</span>
+    </div>
+    <div class="compare-grid" id="compareGrid">
+      <div class="empty" id="compareEmpty">还没有定格卡。<br>发出一个声音，点上面的 <b style="color:var(--cyan)">「📌 定格这一声」</b>，就能把这一刻的波形存下来。<br>把口哨、拍手、说话、唱一个音各存一张，并排比一比！</div>
+    </div>
+  </section>
+
+  <!-- Simulator -->
+  <section class="card" id="simPanel" aria-label="发声模拟">
+    <div class="card-head">
+      <h2>🔊 发声模拟 · 没有麦克风也能玩</h2>
+      <span class="hint">四种波形：音调、响度都一样，只有音色不同</span>
+    </div>
+    <div class="wave-types" id="waveTypes">
+      <button class="wt sel" type="button" data-type="sine">
+        <svg width="64" height="26" viewBox="0 0 64 26"><path d="M2 13 Q10 1 18 13 T34 13 T50 13 T62 13" fill="none" stroke="#22d3ee" stroke-width="2.5"/></svg>
+        正弦波<small>像口哨 · 纯净圆滑</small>
+      </button>
+      <button class="wt" type="button" data-type="triangle">
+        <svg width="64" height="26" viewBox="0 0 64 26"><path d="M2 22 L12 4 L22 22 L32 4 L42 22 L52 4 L62 22" fill="none" stroke="#34d399" stroke-width="2.5"/></svg>
+        三角波<small>像长笛 · 柔和</small>
+      </button>
+      <button class="wt" type="button" data-type="square">
+        <svg width="64" height="26" viewBox="0 0 64 26"><path d="M2 22 V4 H17 V22 H32 V4 H47 V22 H62" fill="none" stroke="#f472b6" stroke-width="2.5"/></svg>
+        方波<small>像单簧管 · 明亮</small>
+      </button>
+      <button class="wt" type="button" data-type="sawtooth">
+        <svg width="64" height="26" viewBox="0 0 64 26"><path d="M2 22 L16 4 V22 L30 4 V22 L44 4 V22 L58 4" fill="none" stroke="#fbbf24" stroke-width="2.5"/></svg>
+        锯齿波<small>像小提琴 · 丰富尖锐</small>
+      </button>
+    </div>
+    <div class="slider-row">
+      <label>音调（频率）<output id="freqOut">262 Hz · 中央 C</output></label>
+      <input type="range" id="freqSlider" min="100" max="800" step="1" value="262" aria-label="模拟音调">
+    </div>
+    <div class="slider-row">
+      <label>响度（音量）<output id="volOut">60%</output></label>
+      <input type="range" id="volSlider" min="0" max="100" step="1" value="60" aria-label="模拟响度">
+    </div>
+    <button class="play-btn" id="playBtn" type="button">▶ 播放模拟声音</button>
+    <p class="hint" style="margin:10px 0 0">播放时，上面的波形、频谱和数值会跟着一起动 —— 和麦克风用的是同一套「眼睛」。切换波形听听看：音调没变，但声音的味道变了，这就是音色！</p>
+  </section>
+
+  <!-- Experiments -->
+  <section class="card" aria-label="课堂小实验">
+    <div class="card-head"><h2>🧪 课堂小实验</h2></div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><b>吹口哨 vs 拍手</b><p>各定格一张卡：口哨是圆滑的波浪线，拍手是一根尖尖的「闪电」，频谱也完全不同。</p></div>
+      <div class="step"><div class="n">2</div><b>唱一个长音「啊——」</b><p>保持音调不变，看波形疏密稳不稳定；再慢慢升高，数一数音调读数怎么变。</p></div>
+      <div class="step"><div class="n">3</div><b>小声 → 大声</b><p>同一句话从耳语说到大喊，观察振幅和响度等级从「安静」跳到「大喊」。</p></div>
+      <div class="step"><div class="n">4</div><b>模拟音色大比拼</b><p>用模拟模式在同一音调下切换四种波形，对比波形形状和频谱柱子的多少。</p></div>
+    </div>
+  </section>
+
+  <p class="foot">声音只在这台设备上实时处理，不上传、不录音、不保存。<br>灵感来自合肥一六八玫瑰园学校的课堂实践：让音调、响度、音色「看得见」。</p>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+"use strict";
+var $ = function(id){ return document.getElementById(id); };
+
+/* ---------- State ---------- */
+var audioCtx = null, analyser = null;
+var micStream = null, micSource = null;
+var osc = null, oscGain = null;
+var mode = "idle"; // idle | mic | sim
+var simType = "sine";
+var rafId = null;
+var snapshots = [];
+var MAX_SNAP = 6;
+
+/* ---------- Elements ---------- */
+var waveC = $("waveCanvas"), specC = $("specCanvas");
+var wctx = waveC.getContext("2d"), sctx = specC.getContext("2d");
+var statusText = $("statusText"), statusDot = $("statusDot");
+var micBtn = $("micBtn"), micBtnTitle = $("micBtnTitle");
+var simJumpBtn = $("simJumpBtn"), simPanel = $("simPanel");
+var stopBtn = $("stopBtn"), freezeBtn = $("freezeBtn");
+var micAlert = $("micAlert");
+
+/* ---------- Buffers ---------- */
+var FFT_SIZE = 2048;
+var timeBuf = new Float32Array(FFT_SIZE);
+var freqBuf = new Float32Array(1024); // frequencyBinCount after init
+
+/* Latest readings (for freeze) */
+var lastPitch = 0, lastNote = "", lastDb = -Infinity, lastRms = 0, lastActive = false;
+
+/* ---------- Canvas sizing (DPR aware) ---------- */
+function fitCanvas(c){
+  var r = c.getBoundingClientRect();
+  var dpr = window.devicePixelRatio || 1;
+  var w = Math.max(50, Math.round(r.width * dpr));
+  var h = Math.max(50, Math.round(r.height * dpr));
+  if(c.width !== w || c.height !== h){ c.width = w; c.height = h; }
+  return {w:w, h:h, dpr:dpr};
+}
+
+/* ---------- Audio setup ---------- */
+function ensureCtx(){
+  if(audioCtx) return true;
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC){ toast("这个浏览器不支持声音分析，请换 Chrome / Edge / Safari 试试"); return false; }
+  audioCtx = new AC();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = FFT_SIZE;
+  analyser.smoothingTimeConstant = 0.75;
+  freqBuf = new Float32Array(analyser.frequencyBinCount);
+  timeBuf = new Float32Array(analyser.fftSize);
+  return true;
+}
+function setStatus(text, cls){
+  statusText.textContent = text;
+  statusDot.className = "dot" + (cls ? " " + cls : "");
+}
+function updateChrome(){
+  stopBtn.hidden = (mode === "idle");
+  freezeBtn.disabled = (mode === "idle");
+  micBtn.classList.toggle("active-mic", mode === "mic");
+  simPanel.classList.toggle("attention", false);
+  document.querySelectorAll(".wt").forEach(function(b){ b.classList.toggle("sel", b.getAttribute("data-type") === simType); });
+  micBtnTitle.textContent = (mode === "mic") ? "麦克风已开启" : "开启麦克风";
+  if(mode === "mic") setStatus("🎤 麦克风聆听中", "live");
+  else if(mode === "sim") setStatus("🔊 模拟发声中", "sim");
+  else setStatus("尚未开启", "");
+}
+
+/* ---------- Mic ---------- */
+function stopSim(){
+  if(osc){ try{ osc.onended = null; osc.stop(); }catch(e){} try{ osc.disconnect(); }catch(e){} osc = null; }
+  if(oscGain){ try{ oscGain.disconnect(); }catch(e){} oscGain = null; }
+  var pb = $("playBtn"); pb.textContent = "▶ 播放模拟声音"; pb.classList.remove("playing");
+}
+function stopMic(){
+  if(micSource){ try{ micSource.disconnect(); }catch(e){} micSource = null; }
+  if(micStream){ micStream.getTracks().forEach(function(t){ t.stop(); }); micStream = null; }
+}
+function stopAll(toIdle){
+  stopSim(); stopMic();
+  if(toIdle){ mode = "idle"; }
+  updateChrome();
+}
+
+/* Mic failure: explain the real reason in place (never scroll the user away) */
+function micFail(kind, err){
+  scState.micDenied = true;
+  scState.micErrorKind = kind;
+  scState.micErrorName = err && err.name ? err.name : "";
+  var raw = err ? "<br><small>浏览器给的原因：" + (err.name || "Error") + (err.message ? " —— " + err.message : "") + "</small>" : "";
+  var html;
+  if(kind === "denied"){
+    html = "<b>麦克风权限没有给到这个页面。</b><br>" +
+      "· 如果刚才弹出了询问框、你点了「拒绝 / 不允许」：点地址栏旁边的 🎤 / 锁形图标，把麦克风改成「允许」，再点一次「开启麦克风」。<br>" +
+      "· 如果<b>根本没弹出询问框</b>：多半是页面开在某个 App 的内置窗口里（在聊天软件或 App 里直接点开的链接），内置窗口通常不给麦克风、也不会弹询问框。请把链接复制到<b>手机自带浏览器或 Chrome / Edge</b> 里打开再试。<br>" +
+      "· 还要确认手机系统允许浏览器用麦克风：设置 → 应用 → 浏览器 → 权限 → 麦克风，设为允许。" + raw;
+  } else if(kind === "nodevice"){
+    html = "<b>没有找到麦克风设备。</b>这台设备可能没接麦克风，或麦克风被系统关掉了。插一个 USB 麦克风 / 带麦耳机再试一次；手机上请确认麦克风权限没有被系统关掉。" + raw;
+  } else if(kind === "busy"){
+    html = "<b>麦克风被占用了。</b>可能有别的 App 正在用麦克风（通话、录音、视频会议）。先把它们关掉，再点一次「开启麦克风」。" + raw;
+  } else if(kind === "unsupported"){
+    html = "<b>这个打开方式拿不到麦克风接口。</b>常见原因：页面不是从 HTTPS / 本机安全地址打开的，或者开在 App 的内置窗口里。请用系统浏览器（Chrome / Edge / Safari）打开在线链接再试。" + raw;
+  } else {
+    html = "<b>麦克风没有打开。</b>失败原因就写在下面这一行，照它排查：" + raw;
+  }
+  micAlert.innerHTML = html + "<br>没有麦克风也没关系 —— 点旁边的 <b>「发声模拟」</b>，照样能看波形、比音色！";
+  micAlert.classList.add("show");
+  simJumpBtn.classList.add("attention");
+  setTimeout(function(){ simJumpBtn.classList.remove("attention"); }, 4000);
+  runSelfCheck();
+  toast("麦克风没打开 —— 原因写在上方红框里");
+  micAlert.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+
+micBtn.addEventListener("click", function(){
+  if(mode === "mic"){ toast("麦克风已经开着啦，对着它发声吧！"); return; }
+  if(!ensureCtx()) return;
+  if(audioCtx.state === "suspended") audioCtx.resume();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    micFail("unsupported", null);
+    return;
+  }
+  stopSim();
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false } })
+    .then(function(stream){
+      micStream = stream;
+      micSource = audioCtx.createMediaStreamSource(stream);
+      micSource.connect(analyser);
+      mode = "mic";
+      scState.micDenied = false;
+      scState.micErrorKind = ""; scState.micErrorName = "";
+      micAlert.classList.remove("show");
+      updateChrome(); runSelfCheck(); startLoop();
+      toast("麦克风已开启！说话、唱歌、吹口哨试试吧 🎤");
+    })
+    .catch(function(err){
+      mode = "idle"; updateChrome();
+      var n = err && err.name ? err.name : "";
+      var kind = "unknown";
+      if(n === "NotAllowedError") kind = "denied";
+      else if(n === "NotFoundError" || n === "OverconstrainedError") kind = "nodevice";
+      else if(n === "NotReadableError" || n === "AbortError") kind = "busy";
+      else if(n === "SecurityError" || n === "NotSupportedError" || n === "TypeError") kind = "unsupported";
+      micFail(kind, err);
+    });
+});
+
+stopBtn.addEventListener("click", function(){
+  stopAll(true);
+  toast("已停止，麦克风已关闭");
+});
+
+simJumpBtn.addEventListener("click", function(){
+  simPanel.scrollIntoView({behavior:"smooth", block:"center"});
+  simPanel.classList.add("attention");
+  setTimeout(function(){ simPanel.classList.remove("attention"); }, 1600);
+});
+
+/* ---------- Simulator ---------- */
+document.querySelectorAll(".wt").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    simType = btn.getAttribute("data-type");
+    document.querySelectorAll(".wt").forEach(function(b){ b.classList.toggle("sel", b === btn); });
+    if(osc) osc.type = simType;
+  });
+});
+var freqSlider = $("freqSlider"), volSlider = $("volSlider");
+function noteName(freq){
+  if(!freq || freq <= 0) return "";
+  var names = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
+  var midi = Math.round(69 + 12 * Math.log2(freq / 440));
+  var name = names[((midi % 12) + 12) % 12];
+  var oct = Math.floor(midi / 12) - 1;
+  return name + oct;
+}
+function friendlyNote(freq){
+  var n = noteName(freq);
+  var extra = "";
+  if(Math.abs(freq-262) < 12) extra = " · 中央 C";
+  else if(Math.abs(freq-440) < 12) extra = " · 标准音 A";
+  else if(Math.abs(freq-261.6) < 6) extra = " · 中央 C";
+  return Math.round(freq) + " Hz · " + n + extra;
+}
+function syncSimLabels(){
+  $("freqOut").textContent = friendlyNote(parseFloat(freqSlider.value));
+  $("volOut").textContent = volSlider.value + "%";
+}
+freqSlider.addEventListener("input", function(){
+  syncSimLabels();
+  if(osc) osc.frequency.setTargetAtTime(parseFloat(freqSlider.value), audioCtx.currentTime, 0.02);
+});
+volSlider.addEventListener("input", function(){
+  syncSimLabels();
+  if(oscGain) oscGain.gain.setTargetAtTime(Math.pow(parseFloat(volSlider.value)/100, 1.6) * 0.9, audioCtx.currentTime, 0.02);
+});
+syncSimLabels();
+
+$("playBtn").addEventListener("click", function(){
+  if(mode === "sim" && osc){ stopAll(true); toast("模拟声音已停止"); return; }
+  if(!ensureCtx()) return;
+  if(audioCtx.state === "suspended") audioCtx.resume();
+  stopMic();
+  osc = audioCtx.createOscillator();
+  oscGain = audioCtx.createGain();
+  osc.type = simType;
+  osc.frequency.value = parseFloat(freqSlider.value);
+  oscGain.gain.value = Math.pow(parseFloat(volSlider.value)/100, 1.6) * 0.9;
+  osc.connect(oscGain); oscGain.connect(analyser); analyser.connect(audioCtx.destination);
+  osc.start();
+  mode = "sim";
+  var pb = $("playBtn"); pb.textContent = "⏹ 停止播放"; pb.classList.add("playing");
+  micAlert.classList.remove("show");
+  updateChrome(); startLoop();
+  window.scrollTo({top:0, behavior:"smooth"});
+  toast("正在播放模拟声音，看上面的波形！🔊");
+});
+
+/* ---------- Pitch detection (autocorrelation) ---------- */
+function autoCorrelate(buf, sampleRate){
+  var SIZE = buf.length;
+  var rms = 0;
+  for(var i=0;i<SIZE;i++) rms += buf[i]*buf[i];
+  rms = Math.sqrt(rms/SIZE);
+  if(rms < 0.012) return -1;
+  var r1 = 0, r2 = SIZE-1, th = 0.2;
+  for(var i=0;i<SIZE/2;i++){ if(Math.abs(buf[i]) < th){ r1 = i; break; } }
+  for(var i=1;i<SIZE/2;i++){ if(Math.abs(buf[SIZE-i]) < th){ r2 = SIZE-i; break; } }
+  var b = buf.slice(r1, r2); SIZE = b.length;
+  if(SIZE < 32) return -1;
+  var c = new Array(SIZE).fill(0);
+  for(var lag=0; lag<SIZE; lag++){
+    for(var j=0; j<SIZE-lag; j++){ c[lag] += b[j]*b[j+lag]; }
+  }
+  var d = 0;
+  while(d < SIZE-1 && c[d] > c[d+1]) d++;
+  var maxVal = -1, maxPos = -1;
+  for(var i=d; i<SIZE; i++){ if(c[i] > maxVal){ maxVal = c[i]; maxPos = i; } }
+  if(maxPos <= 0) return -1;
+  var T0 = maxPos;
+  // parabolic interpolation
+  if(T0 > 0 && T0 < SIZE-1){
+    var x1 = c[T0-1], x2 = c[T0], x3 = c[T0+1];
+    var a = (x1 + x3 - 2*x2)/2, bb = (x3 - x1)/2;
+    if(a) T0 = T0 - bb/(2*a);
+  }
+  var freq = sampleRate / T0;
+  if(freq < 50 || freq > 2000) return -1;
+  return freq;
+}
+
+/* ---------- Drawing helpers ---------- */
+function drawWaveform(ctx2d, w, h, data, color, lineWidth){
+  ctx2d.clearRect(0,0,w,h);
+  // grid
+  ctx2d.strokeStyle = "rgba(148,163,184,.14)"; ctx2d.lineWidth = 1;
+  ctx2d.beginPath(); ctx2d.moveTo(0,h/2); ctx2d.lineTo(w,h/2); ctx2d.stroke();
+  ctx2d.beginPath(); ctx2d.moveTo(0,h/4); ctx2d.lineTo(w,h/4); ctx2d.moveTo(0,3*h/4); ctx2d.lineTo(w,3*h/4); ctx2d.stroke();
+  ctx2d.beginPath();
+  var step = Math.max(1, Math.floor(data.length / w));
+  for(var x=0; x<w; x++){
+    var idx = Math.min(data.length-1, x*step);
+    var v = data[idx];
+    var y = (1 - v) * h/2;
+    if(x===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
+  }
+  ctx2d.strokeStyle = color; ctx2d.lineWidth = lineWidth;
+  ctx2d.shadowColor = color; ctx2d.shadowBlur = 8;
+  ctx2d.stroke(); ctx2d.shadowBlur = 0;
+}
+function drawSpectrum(ctx2d, w, h, freqData, sampleRate, fftSize, fundamental){
+  ctx2d.clearRect(0,0,w,h);
+  var maxFreq = 5000;
+  var binHz = sampleRate / fftSize;
+  var maxBin = Math.min(freqData.length-1, Math.floor(maxFreq / binHz));
+  var bars = Math.min(72, maxBin);
+  var barW = w / bars;
+  for(var i=0;i<bars;i++){
+    // average bins per bar (log-ish spacing via linear bins grouped)
+    var start = Math.floor(Math.pow(i/bars, 1.35) * maxBin);
+    var end = Math.max(start+1, Math.floor(Math.pow((i+1)/bars, 1.35) * maxBin));
+    var sum = 0, cnt = 0;
+    for(var b=start;b<end && b<freqData.length;b++){ sum += freqData[b]; cnt++; }
+    var v = cnt ? sum/cnt : 0; // dB value approx -100..-30
+    var norm = Math.max(0, Math.min(1, (v + 100) / 62));
+    var bh = norm * (h - 22);
+    var hue = 38 + norm*0; // amber family
+    ctx2d.fillStyle = norm > 0.75 ? "#f87171" : (norm > 0.4 ? "#fbbf24" : "#b45309");
+    if(norm > 0.02) ctx2d.fillRect(i*barW+1, h-18-bh, Math.max(1,barW-2), bh);
+    void hue;
+  }
+  // axis labels
+  ctx2d.fillStyle = "rgba(154,168,199,.9)"; ctx2d.font = Math.round(h*0.075) + "px sans-serif";
+  ctx2d.fillText("0", 2, h-4);
+  ctx2d.fillText("1k", w*0.22, h-4); ctx2d.fillText("2k", w*0.45, h-4);
+  ctx2d.fillText("3k", w*0.66, h-4); ctx2d.fillText("5k Hz", w-42, h-4);
+  // harmonic markers
+  if(fundamental > 0){
+    ctx2d.fillStyle = "#f472b6";
+    for(var m=1;m<=5;m++){
+      var f = fundamental*m; if(f > maxFreq) break;
+      var px = Math.pow(f/maxFreq, 1/1.35) * w; // invert the power spacing approx
+      // recompute x by inverse: i/bars = (f/maxFreq) -> using same pow mapping: frac=(bin/maxBin), x = frac^(1/1.35)*w approx via pow
+      px = Math.pow(f/maxFreq, 0.74) * w;
+      ctx2d.beginPath(); ctx2d.arc(px, 12, 4.5, 0, Math.PI*2); ctx2d.fill();
+      ctx2d.font = "11px sans-serif"; ctx2d.fillStyle = "#f9a8d4";
+      ctx2d.fillText(m===1 ? "基频" : "×"+m, Math.min(w-26, px-8), 28);
+      ctx2d.fillStyle = "#f472b6";
+    }
+  }
+}
+
+/* ---------- Timbre description ---------- */
+function describeTimbre(freqData, sampleRate, fftSize, rms){
+  if(rms < 0.015) return {word:"—", desc:"发出一个声音，这里会形容它的音色，下面的频谱图会画出它的「指纹」。"};
+  var binHz = sampleRate / fftSize;
+  var total = 0, weighted = 0, peakCount = 0;
+  var maxBin = Math.min(freqData.length, Math.floor(5000/binHz));
+  var lin = [];
+  for(var i=0;i<maxBin;i++){ var v = Math.max(0, freqData[i]+100); lin.push(v); total += v; weighted += v * i * binHz; }
+  if(total <= 0) return {word:"—", desc:"声音太小啦，再大声一点。"};
+  var centroid = weighted / total;
+  for(var j=2;j<maxBin-2;j++){ if(lin[j] > 22 && lin[j] >= lin[j-1] && lin[j] >= lin[j+1]) peakCount++; }
+  if(peakCount <= 3 && centroid < 1800) return {word:"纯净圆滑 🎐", desc:"频率成分很少、很集中 —— 像口哨、长笛。频谱图上只有几根高柱子。"};
+  if(centroid >= 2600) return {word:"明亮尖锐 ✨", desc:"高频成分很多 —— 声音听起来亮、甚至有点刺。看看频谱右边是不是也站满了柱子。"};
+  if(peakCount >= 9) return {word:"丰富浑厚 🎻", desc:"谐波特别多 —— 像说话、唱歌或弦乐。频谱图上柱子排成一片小山丘。"};
+  return {word:"柔和温暖 🌿", desc:"成分以中低频为主 —— 听起来柔和、不刺耳。试着换个声音对比一下频谱。"};
+}
+
+/* ---------- Main loop ---------- */
+var smoothPitch = 0;
+function startLoop(){ if(rafId == null) loop(); }
+function loop(){
+  rafId = requestAnimationFrame(loop);
+  updateMicTest(false);
+  var wsize = fitCanvas(waveC), ssize = fitCanvas(specC);
+  var idle = (mode === "idle" || !analyser);
+  if(idle){
+    // gentle placeholder wave
+    var t = performance.now()/600;
+    var data = new Float32Array(512);
+    for(var i=0;i<data.length;i++) data[i] = Math.sin(i*0.06 + t)*0.045;
+    drawWaveform(wctx, wsize.w, wsize.h, data, "rgba(34,211,238,.45)", 2);
+    wctx.fillStyle = "rgba(241,245,249,.85)";
+    var fs = Math.max(13, Math.min(Math.round(wsize.h*0.085), Math.round(wsize.w*0.042)));
+    wctx.font = "600 " + fs + "px sans-serif";
+    wctx.textAlign = "center";
+    if(mode === "idle"){
+      wctx.fillText("点「开启麦克风」或播放模拟声音", wsize.w/2, wsize.h/2 - wsize.h*0.24);
+      wctx.fillText("波形就会动起来", wsize.w/2, wsize.h/2 - wsize.h*0.24 + fs*1.5);
+    } else {
+      wctx.fillText("等待声音…", wsize.w/2, wsize.h/2 - wsize.h*0.22);
+    }
+    wctx.textAlign = "left";
+    drawSpectrum(sctx, ssize.w, ssize.h, new Float32Array(64).fill(-100), 44100, FFT_SIZE, 0);
+    if(dynState === "rec") finishPractice();
+    drawTraj();
+    updateDynSrcHint();
+    return;
+  }
+  analyser.getFloatTimeDomainData(timeBuf);
+  analyser.getFloatFrequencyData(freqBuf);
+
+  var rms = 0; for(var i=0;i<timeBuf.length;i++) rms += timeBuf[i]*timeBuf[i];
+  rms = Math.sqrt(rms/timeBuf.length);
+  var db = rms > 0.00001 ? 20*Math.log10(rms) : -Infinity;
+  lastRms = rms; lastDb = db;
+  lastActive = rms > 0.012;
+  if(mode === "mic" && rms > 0.02) micHeardAt = performance.now();
+
+  drawWaveform(wctx, wsize.w, wsize.h, timeBuf, "#22d3ee", Math.max(2, wsize.dpr*1.6));
+
+  var rawPitch = autoCorrelate(timeBuf, audioCtx.sampleRate);
+  if(rawPitch > 0){
+    smoothPitch = smoothPitch ? (smoothPitch*0.55 + rawPitch*0.45) : rawPitch;
+    lastPitch = smoothPitch; lastNote = noteName(smoothPitch);
+  } else { lastPitch = 0; lastNote = ""; if(rms < 0.012) smoothPitch = 0; }
+
+  drawSpectrum(sctx, ssize.w, ssize.h, freqBuf, audioCtx.sampleRate, analyser.fftSize, lastPitch);
+
+  updatePanels(rms, db);
+  trajSample(rms, db);
+  drawTraj();
+}
+
+function updatePanels(rms, db){
+  /* pitch */
+  if(lastPitch > 0){
+    $("pitchHz").textContent = Math.round(lastPitch);
+    $("noteBadge").textContent = "音名 " + lastNote + (Math.abs(lastPitch-262)<14 ? " · 接近中央 C" : (Math.abs(lastPitch-440)<14 ? " · 接近标准音 A" : ""));
+    var frac = (Math.log2(lastPitch) - Math.log2(80)) / (Math.log2(1000) - Math.log2(80));
+    $("pitchMarker").style.left = Math.max(0, Math.min(100, frac*100)) + "%";
+  } else {
+    $("pitchHz").textContent = "—";
+    $("noteBadge").textContent = lastActive ? "拍手这类声音没有固定音调" : "等待发声";
+    if(!lastActive) $("pitchMarker").style.left = "0%";
+  }
+  /* loudness */
+  if(isFinite(db) && rms > 0.001){
+    $("dbVal").textContent = Math.round(db);
+    var pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+    $("levelFill").style.width = pct + "%";
+    var g = $("gradeBadge");
+    if(db < -38){ g.textContent = "🌙 安静"; g.className = "grade-badge"; }
+    else if(db < -16){ g.textContent = "💬 说话声"; g.className = "grade-badge talk"; }
+    else { g.textContent = "📣 大喊 / 很响！"; g.className = "grade-badge loud"; }
+  } else {
+    $("dbVal").textContent = "—";
+    $("levelFill").style.width = "0%";
+    var g2 = $("gradeBadge"); g2.textContent = "— 等待发声 —"; g2.className = "grade-badge";
+  }
+  /* timbre (throttled by frame is fine, cheap enough) */
+  var t = describeTimbre(freqBuf, audioCtx.sampleRate, analyser.fftSize, rms);
+  $("timbreWord").textContent = t.word;
+  $("timbreDesc").textContent = t.desc;
+}
+
+/* ---------- Freeze / compare ---------- */
+freezeBtn.addEventListener("click", function(){
+  if(mode === "idle" || !analyser){ toast("先开启麦克风或播放模拟声音，再定格"); return; }
+  if(snapshots.length >= MAX_SNAP){ toast("对比区最多存 " + MAX_SNAP + " 张，先删掉一张旧的吧"); return; }
+  analyser.getFloatTimeDomainData(timeBuf);
+  analyser.getFloatFrequencyData(freqBuf);
+  var snap = {
+    id: Date.now(),
+    time: Array.prototype.slice.call(timeBuf),
+    freq: Array.prototype.slice.call(freqBuf),
+    pitch: lastPitch, note: lastNote, db: lastDb, active: lastActive,
+    source: mode === "mic" ? "麦克风" : "模拟·" + ({sine:"正弦",triangle:"三角",square:"方波",sawtooth:"锯齿"}[simType] || ""),
+    label: mode === "mic" ? "我的声音" : "模拟音",
+    at: new Date()
+  };
+  snapshots.push(snap);
+  renderSnapshots();
+  toast("已定格！" + (snap.pitch ? "音调约 " + Math.round(snap.pitch) + " Hz" : "这一声没有固定音调（比如拍手）"));
+});
+
+function renderSnapshots(){
+  var grid = $("compareGrid");
+  grid.innerHTML = "";
+  if(!snapshots.length){
+    var d = document.createElement("div"); d.className = "empty"; d.id = "compareEmpty";
+    d.innerHTML = '还没有定格卡。<br>发出一个声音，点上面的 <b style="color:var(--cyan)">「📌 定格这一声」</b>，就能把这一刻的波形存下来。<br>把口哨、拍手、说话、唱一个音各存一张，并排比一比！';
+    grid.appendChild(d); return;
+  }
+  snapshots.forEach(function(snap, idx){
+    var card = document.createElement("div"); card.className = "snap";
+    var labels = ["我的声音","吹口哨","拍手","说话","唱一个音","模拟音","其他声音"];
+    var opts = labels.map(function(L){ return '<option value="' + L + '"' + (L===snap.label?" selected":"") + '>' + L + '</option>'; }).join("");
+    card.innerHTML =
+      '<div class="snap-top"><select aria-label="给这张卡改名">' + opts + '</select>' +
+      '<button class="del" type="button" aria-label="删除这张卡">✕</button></div>' +
+      '<canvas class="wave-mini"></canvas><canvas class="spec-mini"></canvas>' +
+      '<div class="vals"><span>🎵 音调 <b>' + (snap.pitch ? Math.round(snap.pitch) + " Hz（" + snap.note + "）" : "无固定音调") + '</b></span>' +
+      '<span>🔊 响度 <b>' + (isFinite(snap.db) ? Math.round(snap.db) + " dB" : "—") + '</b></span></div>' +
+      '<div class="time">来源：' + snap.source + ' · ' + snap.at.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",second:"2-digit"}) + '</div>';
+    card.querySelector("select").addEventListener("change", function(e){ snap.label = e.target.value; });
+    card.querySelector(".del").addEventListener("click", function(){
+      snapshots = snapshots.filter(function(s){ return s.id !== snap.id; });
+      renderSnapshots(); toast("已删除一张定格卡");
+    });
+    grid.appendChild(card);
+    // draw minis after insertion
+    var wc = card.querySelector(".wave-mini"), sc = card.querySelector(".spec-mini");
+    requestAnimationFrame(function(){
+      var a = fitCanvas(wc); drawWaveform(wc.getContext("2d"), a.w, a.h, snap.time, "#22d3ee", 1.6);
+      var b = fitCanvas(sc); drawSpectrum(sc.getContext("2d"), b.w, b.h, snap.freq, audioCtx ? audioCtx.sampleRate : 44100, FFT_SIZE, snap.pitch);
+    });
+    void idx;
+  });
+}
+
+/* ---------- Toast ---------- */
+var toastTimer = null;
+function toast(msg){
+  var el = $("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ el.classList.remove("show"); }, 2600);
+}
+
+/* ---------- Dynamics (渐强渐弱) practice ---------- */
+var trajC = $("trajCanvas"), trajCtx = trajC.getContext("2d");
+var dynTarget = "cresc";       // cresc | decresc | mountain
+var dynState = "free";         // free (rolling 12s) | rec | frozen
+var dynBuf = [];               // rolling samples {t, v}
+var pracBuf = [];              // practice samples {x(sec), v}
+var pracStart = 0;
+var trajSmooth = 0;
+var lastCountShown = -1;
+var dynSrcShown = null;
+var PRACT_LEN = 6;             // seconds per practice take
+
+function targetLevel(type, x){
+  if(type === "cresc") return 0.12 + 0.76 * x;
+  if(type === "decresc") return 0.88 - 0.76 * x;
+  return 0.12 + 0.76 * (x < 0.5 ? x * 2 : (1 - x) * 2); // mountain
+}
+
+function trajSample(rms, db){
+  var now = performance.now();
+  var lv = (rms > 0.001 && isFinite(db)) ? Math.max(0, Math.min(1, (db + 54) / 46)) : 0;
+  trajSmooth = trajSmooth * 0.55 + lv * 0.45;
+  dynBuf.push({t: now, v: trajSmooth});
+  while(dynBuf.length && dynBuf[0].t < now - 13000) dynBuf.shift();
+  if(dynState === "rec"){
+    var el = (now - pracStart) / 1000;
+    pracBuf.push({x: el, v: trajSmooth});
+    var remain = Math.max(0, Math.ceil(PRACT_LEN - el));
+    if(remain !== lastCountShown){
+      lastCountShown = remain;
+      $("dynStatus").textContent = "● 正在记录你的歌声…还剩 " + remain + " 秒";
+    }
+    if(el >= PRACT_LEN) finishPractice();
+  }
+}
+
+function drawTraj(){
+  var s = fitCanvas(trajC), w = s.w, h = s.h, c = trajCtx;
+  c.clearRect(0, 0, w, h);
+  var padL = 46, padR = 12, padT = 14, padB = 22;
+  var iw = Math.max(40, w - padL - padR), ih = Math.max(40, h - padT - padB);
+  // grid
+  c.strokeStyle = "rgba(148,163,184,.14)"; c.lineWidth = 1;
+  for(var g = 0; g <= 3; g++){
+    var gy = padT + ih * g / 3;
+    c.beginPath(); c.moveTo(padL, gy); c.lineTo(padL + iw, gy); c.stroke();
+  }
+  c.fillStyle = "rgba(154,168,199,.95)";
+  c.font = Math.round(h * 0.055) + "px sans-serif";
+  c.fillText("响 🔊", 2, padT + 4);
+  c.fillText("轻 🤫", 2, padT + ih);
+  // target shape: faint fill + dashed line
+  c.beginPath();
+  for(var i = 0; i <= 60; i++){
+    var x = i / 60, px = padL + x * iw, py = padT + (1 - targetLevel(dynTarget, x)) * ih;
+    if(i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+  }
+  c.strokeStyle = "rgba(251,191,36,.9)"; c.lineWidth = 2.5;
+  c.setLineDash([9, 6]); c.stroke(); c.setLineDash([]);
+  c.lineTo(padL + iw, padT + ih); c.lineTo(padL, padT + ih); c.closePath();
+  c.fillStyle = "rgba(251,191,36,.07)"; c.fill();
+  c.fillStyle = "rgba(251,191,36,.95)";
+  c.font = "600 " + Math.round(h * 0.055) + "px sans-serif";
+  c.fillText("目标", padL + 6, padT + Math.round(h * 0.06));
+  // student's loudness path
+  var pts = [], j, p;
+  if(dynState === "rec" || dynState === "frozen"){
+    for(j = 0; j < pracBuf.length; j++) pts.push({px: padL + Math.min(1, pracBuf[j].x / PRACT_LEN) * iw, v: pracBuf[j].v});
+  } else {
+    var now = performance.now();
+    for(j = 0; j < dynBuf.length; j++){
+      var frac = 1 - (now - dynBuf[j].t) / 12000;
+      if(frac < 0) continue;
+      pts.push({px: padL + frac * iw, v: dynBuf[j].v});
+    }
+  }
+  if(pts.length > 1){
+    c.beginPath();
+    for(j = 0; j < pts.length; j++){
+      p = pts[j]; var y = padT + (1 - p.v) * ih;
+      if(j === 0) c.moveTo(p.px, y); else c.lineTo(p.px, y);
+    }
+    c.strokeStyle = "#22d3ee"; c.lineWidth = Math.max(2.5, s.dpr * 2);
+    c.shadowColor = "#22d3ee"; c.shadowBlur = 8; c.stroke(); c.shadowBlur = 0;
+    c.lineTo(pts[pts.length - 1].px, padT + ih); c.lineTo(pts[0].px, padT + ih); c.closePath();
+    c.fillStyle = "rgba(34,211,238,.16)"; c.fill();
+    if(dynState === "rec"){
+      c.fillStyle = "#f87171";
+      c.beginPath(); c.arc(pts[pts.length - 1].px, padT + (1 - pts[pts.length - 1].v) * ih, 5, 0, Math.PI * 2); c.fill();
+    }
+  } else if(mode === "idle" && dynState === "free"){
+    c.fillStyle = "rgba(241,245,249,.85)";
+    c.font = "600 " + Math.round(h * 0.068) + "px sans-serif";
+    c.textAlign = "center";
+    c.fillText("开启麦克风唱一句，这里会留下你歌声的「山路」", padL + iw / 2, padT + ih / 2);
+    c.textAlign = "left";
+  }
+  // time axis
+  c.fillStyle = "rgba(154,168,199,.9)";
+  c.font = Math.round(h * 0.05) + "px sans-serif";
+  var leftLbl = dynState === "free" ? "← 12 秒前" : "0 秒";
+  var rightLbl = dynState === "free" ? "现在 →" : PRACT_LEN + " 秒";
+  c.fillText(leftLbl, padL, h - 5);
+  c.fillText(rightLbl, padL + iw - c.measureText(rightLbl).width, h - 5);
+}
+
+function updateDynSrcHint(){
+  var msg;
+  if(mode === "mic") msg = "";
+  else if(mode === "sim") msg = "现在用的是「发声模拟」在驱动轨迹：播放模拟声音后，拉动响度滑杆慢慢变大、变小，轨迹会跟着画 —— 老师可以先这样演示一遍。";
+  else msg = "还没有声音来源：先点上方「开启麦克风」来唱；没有麦克风就用下面的「发声模拟」播放声音，这条轨迹照样能画。";
+  if(msg === dynSrcShown) return;
+  dynSrcShown = msg;
+  var el = $("dynSrcHint");
+  el.textContent = msg;
+  el.hidden = !msg;
+}
+
+document.querySelectorAll(".dyn-tgt").forEach(function(b){
+  b.addEventListener("click", function(){
+    dynTarget = b.getAttribute("data-tgt");
+    document.querySelectorAll(".dyn-tgt").forEach(function(x){ x.classList.toggle("sel", x === b); });
+  });
+});
+
+$("dynStartBtn").addEventListener("click", function(){
+  if(mode === "idle"){
+    toast("先开启麦克风，或者播放发声模拟的声音，再点「开始唱」");
+    var hint = $("dynSrcHint");
+    hint.scrollIntoView({behavior: "smooth", block: "center"});
+    hint.style.background = "rgba(251,191,36,.18)";
+    hint.style.borderRadius = "10px";
+    hint.style.padding = "8px 12px";
+    setTimeout(function(){ hint.style.background = ""; hint.style.padding = ""; }, 2400);
+    return;
+  }
+  pracBuf = []; pracStart = performance.now(); dynState = "rec"; lastCountShown = -1;
+  $("dynStartBtn").disabled = true;
+  $("dynFinishBtn").disabled = false;
+  var st = $("dynStatus");
+  st.textContent = "● 正在记录你的歌声…还剩 " + PRACT_LEN + " 秒";
+  st.classList.add("rec");
+  var fb = $("dynFeedback");
+  fb.classList.remove("good");
+  fb.textContent = "唱吧！跟着黄色虚线的形状，让声音慢慢变化 ——";
+  $("dynPanel").scrollIntoView({behavior: "smooth", block: "center"});
+});
+
+$("dynFinishBtn").addEventListener("click", function(){ finishPractice(); });
+
+function finishPractice(){
+  if(dynState !== "rec") return;
+  dynState = "frozen";
+  var sb = $("dynStartBtn");
+  sb.disabled = false; sb.textContent = "↻ 再来一次";
+  $("dynFinishBtn").disabled = true;
+  var st = $("dynStatus");
+  st.textContent = "已定格 —— 看下面的评语，想再试就点「再来一次」";
+  st.classList.remove("rec");
+  giveFeedback();
+}
+
+function giveFeedback(){
+  var fb = $("dynFeedback");
+  fb.classList.remove("good");
+  function say(txt, good){ fb.textContent = txt; if(good) fb.classList.add("good"); }
+  if(pracBuf.length < 12){ say("记录的时间太短啦。点「再来一次」，从头唱满这几秒钟，形状才会完整。"); return; }
+  var vs = pracBuf.map(function(p){ return p.v; });
+  var xs = pracBuf.map(function(p){ return Math.min(1, p.x / PRACT_LEN); });
+  var sm = vs.map(function(_, i){
+    var a = Math.max(0, i - 4), b = Math.min(vs.length - 1, i + 4), s = 0, n = 0, k;
+    for(k = a; k <= b; k++){ s += vs[k]; n++; }
+    return s / n;
+  });
+  function meanRange(f0, f1){
+    var s = 0, n = 0, i;
+    for(i = 0; i < sm.length; i++){ if(xs[i] >= f0 && xs[i] <= f1){ s += sm[i]; n++; } }
+    return n ? s / n : 0;
+  }
+  var startV = meanRange(0, 0.15), endV = meanRange(0.85, 1);
+  var peakV = 0, peakX = 0, minV = 1, i;
+  for(i = 0; i < sm.length; i++){
+    if(sm[i] > peakV){ peakV = sm[i]; peakX = xs[i]; }
+    if(sm[i] < minV) minV = sm[i];
+  }
+  var range = peakV - Math.min(startV, endV);
+  var wN = Math.max(2, Math.round(sm.length * 0.07)); // ~0.4s window
+  var jumpUp = 0, jumpDown = 0;
+  for(i = 0; i + wN < sm.length; i++){
+    var d = sm[i + wN] - sm[i];
+    if(d > jumpUp) jumpUp = d;
+    if(-d > jumpDown) jumpDown = -d;
+  }
+  if(peakV < 0.12){ say("好像没听到声音 🎤 对着麦克风唱，或者把模拟声音的音量拉大，再试一次。"); return; }
+  if(range < 0.16){ say("变化太小啦 —— 从头到尾差不多一样响。把最轻的地方再轻一点、最响的地方再响一点，让山路爬得高高的！"); return; }
+  if(dynTarget === "cresc"){
+    var diff = endV - startV;
+    if(diff < -0.10) say("这次声音是慢慢变小的，那是「渐弱 ＞」。我们练的是渐强：从很小声开始，一点一点变大。");
+    else if(diff < 0.14) say("结尾和开头差不多响，还看不出上坡。再试试：开头轻轻的，越唱越响，结尾最响。");
+    else if(jumpUp > 0.38) say("方向对了！不过中间有一下是「突然」变大的。渐强要像上坡路一样慢慢爬，不能一下子跳上去 —— 再试一次，变得更慢一点。");
+    else say("做到了！🎉 开头轻轻的，后面越来越响，歌声的山路一路爬上坡 —— 这就是「渐强 ＜」！", true);
+  } else if(dynTarget === "decresc"){
+    var diff2 = startV - endV;
+    if(diff2 < -0.10) say("这次声音是慢慢变大的，那是「渐强 ＜」。我们练的是渐弱：先响亮地唱，再一点一点收小。");
+    else if(diff2 < 0.14) say("开头和结尾差不多响，还看不出下坡。再试试：一开口就响亮，后面慢慢、慢慢变轻。");
+    else if(jumpDown > 0.38) say("方向对了！不过中间有一下是「突然」变小的。渐弱要像下坡路一样慢慢滑下来 —— 再试一次，收得更慢一点。");
+    else say("做到了！🎉 开头响亮，后面越来越轻，歌声的山路一路滑下坡 —— 这就是「渐弱 ＞」！", true);
+  } else {
+    if(peakX > 0.72) say("声音一路爬上去了，但没有「下山」：后半段要慢慢变小，落回一个轻轻的结尾。");
+    else if(peakX < 0.28) say("最响的地方出现得太早啦。先慢慢爬到山顶（中间最响），再慢慢滑下来。");
+    else if(peakV - startV < 0.16) say("开头已经挺响了，山就爬不高啦。开头先轻一点，爬上山顶再下来。");
+    else if(peakV - endV < 0.16) say("爬上山顶了，但结尾还是很响，没有滑下来。最后要慢慢收成小小的声音。");
+    else if(jumpUp > 0.42 || jumpDown > 0.42) say("形状有点像山了！不过中间有一下变化太突然。爬山、下山都要慢慢来，再试一次。");
+    else say("做到了！🎉 先慢慢变响、爬上山顶，再慢慢变轻、滑下山来 —— 这就是「先渐强、再渐弱 ＜＞」！", true);
+  }
+}
+
+/* ---------- Self check ---------- */
+var scState = { secure:false, gum:false, audio:false, micDenied:false, micErrorKind:"", micErrorName:"", permState:"", audioInputs:-1 };
+var MIC_KIND_TXT = { denied:"权限被拒绝", nodevice:"没找到麦克风设备", busy:"麦克风被别的程序占用", unsupported:"这个打开方式拿不到麦克风接口", unknown:"打开失败" };
+var micHeardAt = 0;      // last time the mic picked up a clear sound
+var micTestState = "";   // off | heard | silent (cached to avoid DOM churn)
+
+function setScItem(icoId, txtId, ok, txt){
+  $(icoId).textContent = ok ? "✅" : "❌";
+  $(txtId).textContent = txt;
+}
+function updateMicTest(force){
+  var st;
+  if(mode === "mic") st = (performance.now() - micHeardAt < 2500) ? "heard" : "silent";
+  else if(scState.micDenied) st = "denied";
+  else st = "off";
+  if(!force && st === micTestState) return;
+  micTestState = st;
+  var ico = $("scIcoMic"), txt = $("scTxtMic");
+  if(st === "heard"){ ico.textContent = "✅"; txt.textContent = "已开启，而且测到声音了 —— 电平有反应，放心上课"; }
+  else if(st === "silent"){ ico.textContent = "🔇"; txt.textContent = "麦克风已开启，但还没测到声音 —— 对着麦克风喊一声；一直没反应就检查麦克风有没有接好"; }
+  else if(st === "denied"){
+    ico.textContent = "❌";
+    txt.textContent = "刚才开启失败：" + (MIC_KIND_TXT[scState.micErrorKind] || "打开失败") +
+      (scState.micErrorName ? "（" + scState.micErrorName + "）" : "") + " —— 具体怎么办看页面上方红框";
+  }
+  else { ico.textContent = "🎙️"; txt.textContent = "还没开启麦克风 —— 点下面的「开启麦克风」，对着它喊一声确认"; }
+}
+function runSelfCheck(){
+  var secure = !!window.isSecureContext;
+  var gum = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  var audio = !!(window.AudioContext || window.webkitAudioContext);
+  scState.secure = secure; scState.gum = gum; scState.audio = audio;
+  setScItem("scIcoSecure", "scTxtSecure", secure,
+    secure ? "是 HTTPS / 本机安全环境，浏览器允许使用麦克风" : "不是安全环境，浏览器会直接禁用麦克风");
+  if(!gum){
+    setScItem("scIcoGum", "scTxtGum", false, "这个浏览器没有麦克风接口，多半是版本太老或在 App 的内嵌窗口里打开");
+  } else if(scState.permState === "denied"){
+    setScItem("scIcoGum", "scTxtGum", false, "麦克风权限已被拒绝 —— 点地址栏旁的锁形 / 🎤 图标改成「允许」，或在系统设置里允许这个浏览器用麦克风");
+  } else if(scState.audioInputs === 0 && scState.permState === "granted"){
+    setScItem("scIcoGum", "scTxtGum", false, "权限已允许，但没有检测到麦克风设备 —— 可能根本没接麦克风");
+  } else if(scState.audioInputs > 0){
+    setScItem("scIcoGum", "scTxtGum", true, "浏览器有麦克风接口，检测到 " + scState.audioInputs + " 个麦克风设备");
+  } else {
+    setScItem("scIcoGum", "scTxtGum", true, "浏览器有麦克风接口，可以申请使用麦克风");
+  }
+  setScItem("scIcoAudio", "scTxtAudio", audio,
+    audio ? "声音分析（Web Audio）可用，波形和频谱能画出来" : "声音分析不可用，波形画不出来");
+  var verdict = $("scVerdict"), steps = $("scSteps");
+  if(!secure){
+    verdict.className = "sc-verdict bad";
+    verdict.textContent = "⚠️ 打开方式不对：请用浏览器打开在线链接，不要打开下载到本地的文件 —— 本地文件不是安全环境，麦克风会被浏览器禁用。下面的发声模拟不受影响，照样能上课。";
+    steps.hidden = false;
+  } else if(!gum || !audio || scState.micDenied || scState.permState === "denied"){
+    verdict.className = "sc-verdict warn";
+    if(scState.micDenied){
+      verdict.textContent = "⚠️ 麦克风开启失败：" + (MIC_KIND_TXT[scState.micErrorKind] || "打开失败") +
+        (scState.micErrorName ? "（" + scState.micErrorName + "）" : "") +
+        "。照页面上方红框里的方法处理，或按下面三步排查；等不及就先点「直接用发声模拟上课」。";
+    } else if(scState.permState === "denied"){
+      verdict.textContent = "⚠️ 麦克风权限现在是「已拒绝」状态，点「开启麦克风」也不会再弹询问框。先点地址栏旁的锁形 / 🎤 图标把麦克风改成「允许」，再回来点开启。";
+    } else {
+      verdict.textContent = "⚠️ 暂时用不了麦克风。按下面三步排查；等不及就先点「直接用发声模拟上课」。";
+    }
+    steps.hidden = false;
+  } else if(mode === "mic"){
+    verdict.className = "sc-verdict ok";
+    verdict.textContent = "✅ 麦克风已开启。下面「麦克风实测」变 ✅（测到声音）就放心了。";
+    steps.hidden = true;
+  } else {
+    verdict.className = "sc-verdict ok";
+    verdict.textContent = scState.permState === "granted"
+      ? "🟢 环境检查通过，麦克风权限已是「允许」。点「开启麦克风」对着喊一声，「麦克风实测」变 ✅ 就放心了。"
+      : "🟢 环境检查通过（安全环境、麦克风接口都在），但麦克风还没真正测过。点「开启麦克风」并允许权限，对着喊一声 —— 「麦克风实测」变 ✅ 才算真通了。";
+    steps.hidden = true;
+  }
+  updateMicTest(true);
+}
+function probeMicEnv(){
+  if(navigator.permissions && navigator.permissions.query){
+    try{
+      navigator.permissions.query({ name:"microphone" }).then(function(res){
+        scState.permState = res.state || "";
+        try{ res.onchange = function(){ scState.permState = res.state || ""; runSelfCheck(); }; }catch(e){}
+        runSelfCheck();
+      }).catch(function(){});
+    }catch(e){}
+  }
+  if(navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){
+    navigator.mediaDevices.enumerateDevices().then(function(devs){
+      var n = 0;
+      devs.forEach(function(d){ if(d.kind === "audioinput") n++; });
+      if(n !== scState.audioInputs){ scState.audioInputs = n; runSelfCheck(); }
+    }).catch(function(){});
+  }
+}
+$("scRecheck").addEventListener("click", function(){
+  runSelfCheck();
+  probeMicEnv();
+  toast("已重新检测");
+});
+$("scSimBtn").addEventListener("click", function(){
+  simPanel.scrollIntoView({behavior:"smooth", block:"center"});
+  simPanel.classList.add("attention");
+  setTimeout(function(){ simPanel.classList.remove("attention"); }, 1600);
+});
+
+/* ---------- Boot ---------- */
+updateChrome();
+runSelfCheck();
+probeMicEnv();
+startLoop();
+window.addEventListener("resize", function(){ /* loop re-fits canvases every frame */ });
+})();
+</script>
+</body>
+</html>
